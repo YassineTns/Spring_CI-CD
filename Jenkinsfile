@@ -10,7 +10,7 @@ pipeline {
     DOCKER_CRED = 'dockerhub'
     SONAR_TOKEN = credentials('sonar-token')
     SONAR_URL   = 'http://localhost:9000'
-    NEXUS_URL   = 'http://3.80.54.73/repository/maven-snapshots/'
+    NEXUS_URL   = 'http://localhost:8081/repository/maven-snapshots/'
   }
 
   stages {
@@ -65,6 +65,7 @@ pipeline {
             docker push $DOCKER_USER/demoapp:${GIT_COMMIT}
             docker tag $DOCKER_USER/demoapp:${GIT_COMMIT} $DOCKER_USER/demoapp:latest
             docker push $DOCKER_USER/demoapp:latest
+            docker logout
           '''
         }
       }
@@ -80,16 +81,19 @@ pipeline {
     }
 
     stage('Deploy to Nexus') {
-  steps {
-    echo '📦 Déploiement du JAR vers Nexus (maven-snapshots)'
-    withCredentials([usernamePassword(
-      credentialsId: 'nexus-credentials',
-      usernameVariable: 'NEXUS_USER',
-      passwordVariable: 'NEXUS_PASS'
-    )]) {
-      // Crée un settings.xml temporaire avec les credentials
-      sh '''cat > settings.xml <<EOF
-<settings>
+      steps {
+        echo '📦 Déploiement du JAR vers Nexus (maven-snapshots)'
+        withCredentials([usernamePassword(
+          credentialsId: 'nexus-credentials',
+          usernameVariable: 'NEXUS_USER',
+          passwordVariable: 'NEXUS_PASS'
+        )]) {
+          sh '''
+            cat > settings.xml <<EOF
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" 
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 
+          https://maven.apache.org/xsd/settings-1.0.0.xsd">
   <servers>
     <server>
       <id>nexus</id>
@@ -98,13 +102,12 @@ pipeline {
     </server>
   </servers>
 </settings>
-EOF'''
-      
-      // Utilise le nouveau settings.xml et corrige la syntaxe du repository
-      sh 'mvn deploy -B -s settings.xml -DaltDeploymentRepository=nexus::http://3.80.54.73:8081/repository/maven-snapshots/'
+EOF
+            mvn deploy -B -s settings.xml -DaltDeploymentRepository=nexus::default::${NEXUS_URL}
+          '''
+        }
+      }
     }
-  }
-}
   }
 
   post {
